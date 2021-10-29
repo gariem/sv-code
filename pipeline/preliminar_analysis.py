@@ -36,22 +36,22 @@ def file_details_3(file_path):
 def prepare_exploratory_data(vcf_file_path):
     # TODO: Can infer the command using a list of columns to be included in the query
     query_sniffles = """ 
-        echo '#CHROM\\tPOS\\tEND\\tSVLEN\\tSVTYPE\\tFILTER\\tRE\\tAF\\tGT\\tDR\\tDV\\tSVLEN_ABS\\tAF_BIN\\tSVLEN_BIN' > {output} && 
+        echo '#CALLER\\tIDX\\tCHROM\\tPOS\\tEND\\tSVLEN\\tSVTYPE\\tFILTER\\tRE\\tAF\\tGT\\tDR\\tDV\\tSVLEN_ABS\\tAF_BIN\\tSVLEN_BIN' > {output} && 
         {bcf_bin} query -Hf'%CHROM\\t%POS0\\t%END0\\t[%SVLEN]\\t[%SVTYPE]\\t%FILTER\\t[%RE]\\t[%AF]\\t[%GT]\\t[%DR]\\t[%DV]\\n' {vcf_file} | 
         awk -F'\\t' 'BEGIN {{OFS = FS}} $1 ~/^[1-9]*$|^X$/{{ 
-            abs=$4<0?-$4:$4; af=(5-(int($7*100)%5)+int($7*100))/100; 
+            abs=$4<0?-$4:$4; af=(5-(int($7*100)%5)+int($7*100))/100; idx=$1":"$2"-"$3; 
             len_bin=abs<30?"0-30":abs<50?"30-50":abs<100?"50-100":abs<500?"100-500":"500+";  
-            print $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,abs,af,len_bin
+            print "{caller}",idx,$1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,abs,af,len_bin
         }}' >> {output}
     """
 
     query_pbsv = """
-        echo '#CHROM\\tPOS\\tEND\\tSVLEN\\tSVTYPE\\tFILTER\\tGT\\tAD\\tDP\\tSVLEN_ABS\\tSVLEN_BIN' > {output} && 
+        echo '#CALLER\\tIDX\\tCHROM\\tPOS\\tEND\\tSVLEN\\tSVTYPE\\tFILTER\\tGT\\tAD\\tDP\\tSVLEN_ABS\\tSVLEN_BIN' > {output} && 
         {bcf_bin} query -Hf'%CHROM\\t%POS0\\t%END0\\t[%SVLEN]\\t[%SVTYPE]\\t%FILTER\\t[%GT]\\t[%AD]\\t[%DP]\\n' {vcf_file} | 
         awk -F'\\t' 'BEGIN {{OFS = FS}} $1 ~/^[1-9]*$|^X$/{{
-            abs=$4<0?-$4:$4; af=(5-(int($7*100)%5)+int($7*100))/100; 
+            abs=$4<0?-$4:$4; af=(5-(int($7*100)%5)+int($7*100))/100; idx=$1":"$2"-"$3;
             len_bin=abs<30?"0-30":abs<50?"30-50":abs<100?"50-100":abs<500?"100-500":"500+";
-            print $1,$2,$3,$4,$5,$6,$7,$8,$9,abs,len_bin
+            print "{caller}",idx,$1,$2,$3,$4,$5,$6,$7,$8,$9,abs,len_bin
         }}' >> {output}
     """
 
@@ -60,9 +60,9 @@ def prepare_exploratory_data(vcf_file_path):
 
     output_file = base_dir + "/work/explore/raw/" + strain + "_" + caller + ".tsv"
     if caller == "pbsv":
-        command = query_pbsv.format(bcf_bin=bcf_tools, vcf_file=vcf_file_path, output=output_file)
+        command = query_pbsv.format(bcf_bin=bcf_tools, vcf_file=vcf_file_path, output=output_file, caller=caller)
     else:
-        command = query_sniffles.format(bcf_bin=bcf_tools, vcf_file=vcf_file_path, output=output_file)
+        command = query_sniffles.format(bcf_bin=bcf_tools, vcf_file=vcf_file_path, output=output_file, caller=caller)
 
     print("Generating Exploratory RAW File => " + command)
     stream = os.popen(command)
@@ -72,10 +72,10 @@ def prepare_exploratory_data(vcf_file_path):
 # This function looks for a exploratory file and generates a bed4 from it
 def bed_and_intersect_from_exploratory_file(vcf_file_path, window):
     bed_pbsv = """
-        awk -F'\\t' 'BEGIN {{OFS = FS}} {{ print $1==\"#CHROM\"?$1:\"chr\"$1,$2-{window},$3+{window},$10 }}' {input} > {output}
+        awk -F'\\t' 'BEGIN {{OFS = FS}} {{ print $3==\"CHROM\"?$3:\"chr\"$3,$4-{window},$5+{window},$12 }}' {input} > {output}
     """
     bed_sniffles = """
-        awk -F'\\t' 'BEGIN {{OFS = FS}} {{ print $1==\"#CHROM\"?$1:\"chr\"$1,$2-{window},$3+{window},$12 }}' {input} > {output}
+        awk -F'\\t' 'BEGIN {{OFS = FS}} {{ print $3==\"CHROM\"?$3:\"chr\"$3,$4-{window},$5+{window},$14 }}' {input} > {output}
     """
 
     file_name, strain, caller = file_details_2(vcf_file_path)
@@ -93,33 +93,37 @@ def bed_and_intersect_from_exploratory_file(vcf_file_path, window):
 
     # Intersect generated file with validated data
     intersect_output = base_dir + '/work/explore/raw/' + strain + "_" + caller + "_intersect_validated.tsv"
-    intersect_with(bed_in=generated_bed, files_with=input_validated, intersect_out=intersect_output, window=window)
+    intersect_with(bed_in=generated_bed, files_with=input_validated, intersect_out=intersect_output, window=window,
+                   caller=caller)
 
     # Intersect generated file with previous catalog
     intersect_output = base_dir + '/work/explore/raw/' + strain + "_" + caller + "_intersect_previous.tsv"
-    intersect_with(bed_in=generated_bed, files_with=input_previous, intersect_out=intersect_output, window=window)
+    intersect_with(bed_in=generated_bed, files_with=input_previous, intersect_out=intersect_output, window=window,
+                   caller=caller)
 
 
 # Intersect new BED file with experimentally validated data
-def intersect_with(bed_in, files_with, intersect_out, window=0):
+def intersect_with(bed_in, files_with, intersect_out, window=0, caller=''):
     # Clear output file and add header
     with open(intersect_out, 'w') as out_file:
-        out_file.write('#CHROM\tPOS\tEND\tSVLEN\tTYPE\tCHROM\tPOS\tEND\tSVLEN\tTYPE\tOVERLAP\n')
+        out_file.write('#CALLER\tIDX\tCHROM\tPOS\tEND\tSVLEN\tTYPE\tCHROM\tPOS\tEND\tSVLEN\tTYPE\tOVERLAP\n')
 
     for file in files_with:
         file_name, strain, sv_type = file_details_2(file)
-        intersect_beds(file, bed_in, intersect_out, window, sv_type)
+        intersect_beds(file, bed_in, intersect_out, window, sv_type, caller=caller)
 
 
 # Intersect two BED files with -wo option
-def intersect_beds(bed_a, bed_b, output, window=0, a_type='N/A', b_type='N/A'):
+def intersect_beds(bed_a, bed_b, output, window=0, a_type='', b_type='', caller=''):
     intersect = """
         {bed_tools_bin} intersect -a {bed_a} -b {bed_b} -wo | 
-        awk -F'\\t' 'BEGIN {{OFS = FS}} {{print $1,$2,$3,$4,toupper("{a_type}"),substr($5,4),$6+{window},$7-{window},$8,"{b_type}",$9}}' >> {output}
+        awk -F'\\t' 'BEGIN {{OFS = FS}} {{
+        idx=substr($5,4)":"$6+{window}"-"$7-{window}
+        print "{caller}",idx,$1,$2,$3,$4,toupper("{a_type}"),substr($5,4),$6+{window},$7-{window},$8,"{b_type}",$9}}' >> {output}
     """
 
     command = intersect.format(bed_tools_bin=bed_tools, bed_a=bed_a, bed_b=bed_b, window=window, output=output,
-                               a_type=a_type, b_type=b_type)
+                               a_type=a_type, b_type=b_type, caller=caller)
 
     print("Intersecting => " + command)
     stream = os.popen(command)
@@ -133,7 +137,7 @@ def merge_tsv_files():
         sheet_name = tsv_file.replace(tsv_file.replace(".tsv", "").split("_")[0] + "_", "").replace(".tsv", "")
         print("Processing sheet: " + sheet_name)
         df = pd.read_csv(tsv_file, sep='\t', low_memory=False)
-        df.to_excel(writer, sheet_name=sheet_name)
+        df.to_excel(writer, sheet_name=sheet_name, index=False)
     writer.save()
 
 
