@@ -29,17 +29,17 @@ def prepare_exploratory_data(vcf_file_path):
         {bcf_bin} query -Hf'%CHROM\\t%POS0\\t%END0\\t[%SVLEN]\\t[%SVTYPE]\\t%FILTER\\t[%RE]\\t[%AF]\\t[%GT]\\t[%DR]\\t[%DV]\\n' {vcf_file} | 
         awk -F'\\t' 'BEGIN {{OFS = FS}} $1 ~/^[1-9]*$|^X$/{{ 
             abs=$4<0?-$4:$4; af=(5-(int($7*100)%5)+int($7*100))/100; idx=$1":"$2"-"$3; 
-            len_bin=abs<30?"0-30":abs<50?"30-50":abs<100?"50-100":abs<500?"100-500":abs<2000?"500-2000":abs<10000?"2000-10000":abs<50000?"10000-50000":"large";  
+            len_bin=abs<30?"0-30":abs<50?"30-50":abs<100?"50-100":abs<500?"100-500":abs<2000?"500-2000":abs<10000?"2000-10000":abs<50000?"10000-50000":"50000+";  
             print "{caller}",idx,$1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,abs,af,len_bin
         }}' >> {output}
     """
 
     query_pbsv = """
-        echo '#CALLER\\tIDX\\tCHROM\\tPOS\\tEND\\tSVLEN\\tSVTYPE\\tFILTER\\tGT\\tAD\\tDP\\tSVLEN_ABS\\tSVLEN_BIN' > {output} && 
-        {bcf_bin} query -Hf'%CHROM\\t%POS0\\t%END0\\t[%SVLEN]\\t[%SVTYPE]\\t%FILTER\\t[%GT]\\t[%AD]\\t[%DP]\\n' {vcf_file} | 
+        echo '#CALLER\\tIDX\\tCHROM\\tPOS\\tEND\\tSVLEN\\tSVTYPE\\tFILTER\\tGT\\tAD_0\\tAD_1\\tDP\\tSVLEN_ABS\\tSVLEN_BIN' > {output} && 
+        {bcf_bin} query -Hf'%CHROM\\t%POS0\\t%END0\\t[%SVLEN]\\t[%SVTYPE]\\t%FILTER\\t[%GT]\\t[%AD{{0}}]\\t[%AD{{1}}]\\t[%DP]\\n' {vcf_file} | 
         awk -F'\\t' 'BEGIN {{OFS = FS}} $1 ~/^[1-9]*$|^X$/{{
             abs=$4<0?-$4:$4; af=(5-(int($7*100)%5)+int($7*100))/100; idx=$1":"$2"-"$3;
-            len_bin=abs<30?"0-30":abs<50?"30-50":abs<100?"50-100":abs<500?"100-500":abs<2000?"500-2000":abs<10000?"2000-10000":abs<50000?"10000-50000":"large";
+            len_bin=abs<30?"0-30":abs<50?"30-50":abs<100?"50-100":abs<500?"100-500":abs<2000?"500-2000":abs<10000?"2000-10000":abs<50000?"10000-50000":"50000+";
             print "{caller}",idx,$1,$2,$3,$4,$5,$6,$7,$8,$9,abs,len_bin
         }}' >> {output}
     """
@@ -86,60 +86,71 @@ def bed_and_intersect_from_exploratory_file(vcf_file_path, window):
     print(stream.read())
 
     # Intersect generated file with validated data
-    intersect_output = base_dir + '/work/explore/raw/' + strain + "_" + caller + "_intersect_validated.tsv"
-    intersect_with(bed_in=generated_bed, files_with=input_validated, intersect_out=intersect_output, window=window,
-                   caller=caller)
+    output_base_name = base_dir + '/work/explore/raw/' + strain + "_" + caller + "_intersect_validated"
+    intersect_with(bed_in=generated_bed, files_with=input_validated, out_base_name=output_base_name, window=window,
+                   caller=caller, outer=True)
 
     # Intersect generated file with previous catalog
-    intersect_output = base_dir + '/work/explore/raw/' + strain + "_" + caller + "_intersect_previous.tsv"
-    intersect_with(bed_in=generated_bed, files_with=input_previous, intersect_out=intersect_output, window=window,
-                   caller=caller)
+    output_base_name = base_dir + '/work/explore/raw/' + strain + "_" + caller + "_intersect_previous"
+    intersect_with(bed_in=generated_bed, files_with=input_previous, out_base_name=output_base_name, window=window,
+                   caller=caller, outer=False)
 
 
 # Intersect new BED file with experimentally validated data
-def intersect_with(bed_in, files_with, intersect_out, window=0, caller=''):
+def intersect_with(bed_in, files_with, out_base_name, window=0, caller='', outer=False):
+    inner_header = '#CALLER\tIDX_SCR\tCHROM_A\tPOS_A\tEND_A\tSVLEN_A\tTYPE_A\tIDX\tCHROM_B\tPOS_B\tEND_B\tSVLEN_B\tTYPE_B\tOVERLAP\n'
+    outer_header = '#CALLER\tIDX_SCR\tCHROM_A\tPOS_A\tEND_A\tSVLEN_A\tTYPE_A\n'
+
+    inner_final_name = out_base_name + '.tsv'
+    outer_final_name = out_base_name + '_out.tsv'
+
     # Clear output file and add header
-    with open(intersect_out, 'w') as out_file:
-        out_file.write(
-            '#CALLER\tIDX\tCHROM_A\tPOS_A\tEND_A\tSVLEN_A\tTYPE_A\tCHROM_B\tPOS_B\tEND_B\tSVLEN_B\tTYPE_B\tOVERLAP\n')
+    with open(inner_final_name, 'w') as out_file:
+        out_file.write(inner_header)
+
+    if outer:
+        # Clear output file and add header
+        with open(outer_final_name, 'w') as out_file:
+            out_file.write(outer_header)
 
     for file in files_with:
         info = path_info(file)
         sv_type = info[3]
-        intersect_beds(file, bed_in, intersect_out, window, sv_type, caller=caller)
+        intersect_beds(file, bed_in, inner_final_name, window, a_type=sv_type, caller=caller)
+        if outer:
+            intersect_beds(file, bed_in, outer_final_name, window, a_type=sv_type, caller=caller, options='-v')
 
 
 # Intersect two BED files with -wo option
-def intersect_beds(bed_a, bed_b, output, window=0, a_type='', b_type='', caller=''):
-    intersect = """
-        {bed_tools_bin} intersect -a {bed_a} -b {bed_b} -wo | 
+def intersect_beds(bed_a, bed_b, output, window=0, a_type='', b_type='', caller='', options='-wo'):
+    intersect_in = """
+        {bed_tools_bin} intersect -a {bed_a} -b {bed_b} {options} | 
         awk -F'\\t' 'BEGIN {{OFS = FS}} {{
-        idx=substr($5,4)":"$6+{window}"-"$7-{window}
-        print "{caller}",idx,$1,$2,$3,$4,toupper("{a_type}"),substr($5,4),$6+{window},$7-{window},$8,"{b_type}",$9}}' >> {output}
+        idx_src=substr($1,4)":"$2+{window}"-"$3-{window};
+        idx=substr($5,4)":"$6+{window}"-"$7-{window};
+        print "{caller}",idx_src,$1,$2,$3,$4,toupper("{a_type}"),idx,substr($5,4),$6+{window},$7-{window},$8,"{b_type}",$9}}' >> {output}
     """
 
+    intersect_out = """
+        {bed_tools_bin} intersect -a {bed_a} -b {bed_b} {options} | 
+        awk -F'\\t' 'BEGIN {{OFS = FS}} {{
+        idx_src=substr($1,4)":"$2+{window}"-"$3-{window};
+        idx=substr($5,4)":"$6+{window}"-"$7-{window};
+        print "{caller}",idx_src,$1,$2,$3,$4,toupper("{a_type}")}}' >> {output}
+    """
+
+    intersect = intersect_in if options == '-wo' else intersect_out
+
     command = intersect.format(bed_tools_bin=bed_tools, bed_a=bed_a, bed_b=bed_b, window=window, output=output,
-                               a_type=a_type, b_type=b_type, caller=caller)
+                               a_type=a_type, b_type=b_type, caller=caller, options=options)
 
     print("Intersecting => " + command)
     stream = os.popen(command)
     print(stream.read())
 
 
-# Combine TSV files into a single XLSX file
-def merge_tsv_files():
-    print("Creating merged Excel file")
-    writer = pd.ExcelWriter(base_dir + '/work/explore/merged.xlsx')  # Arbitrary output name
-    for tsv_file in glob.glob(base_dir + '/work/explore/raw/*.tsv'):
-        sheet_name = "_".join(path_info(tsv_file)[2:])
-        print("Processing sheet: " + sheet_name)
-        df = pd.read_csv(tsv_file, sep='\t', low_memory=False)
-        df.to_excel(writer, sheet_name=sheet_name, index=False)
-    writer.save()
-
-
 # Join validated intersections with original new calls
-def join_with_intersect(set_identifier):
+def join_with_intersect(set_identifier, how="inner"):
     for tsv_file in glob.glob(base_dir + '/work/explore/raw/*_intersect_' + set_identifier + '.tsv'):
         info = path_info(tsv_file)
         folder = info[0]
@@ -154,8 +165,34 @@ def join_with_intersect(set_identifier):
         intersect_df = pd.read_csv(tsv_file, sep='\t', low_memory=False)
         calls_df = pd.read_csv(original_calls, sep='\t', low_memory=False)
 
-        join_df = pd.merge(intersect_df, calls_df, on="IDX")
+        join_df = pd.merge(intersect_df, calls_df, how=how, on="IDX")
         join_df.to_csv(join_output, sep='\t', index=False)
+
+
+# Combine TSV files into a single XLSX file
+def merge_tsv_files():
+    print("Creating merged Excel file")
+    writer = pd.ExcelWriter(base_dir + '/work/explore/merged.xlsx')  # Arbitrary output name
+    for tsv_file in sorted(glob.glob(base_dir + '/work/explore/raw/*_join_*.tsv'), key=os.path.basename):
+        sheet_name = "_".join(path_info(tsv_file)[3:])
+        print("Processing sheet: " + sheet_name)
+        df = pd.read_csv(tsv_file, sep='\t', low_memory=False).drop(
+            columns=["CHROM_A", "POS_A", "END_A",
+                     "CHROM_B", "POS_B", "END_B", "TYPE_B", "SVLEN_B",
+                     "#CALLER_y", "POS", "END", "SVLEN"])
+
+        df.loc[df['TYPE_A'] == df['SVTYPE'], 'VALID'] = 'VALID'
+        df.loc[df['TYPE_A'] != df['SVTYPE'], 'VALID'] = 'NOT_VALID'
+
+        df.to_excel(writer, sheet_name=sheet_name, index=False)
+
+    for tsv_out in sorted(glob.glob(base_dir + '/work/explore/raw/*_intersect_*_out.tsv'), key=os.path.basename):
+        sheet_name = "_".join(path_info(tsv_out)[3:])
+        print("Processing sheet: " + sheet_name)
+        df = pd.read_csv(tsv_out, sep='\t', low_memory=False)
+        df.to_excel(writer, sheet_name=sheet_name, index=False)
+
+    writer.save()
 
 
 # Initialize directories
@@ -173,6 +210,7 @@ for vcf_file in input_calls:
     prepare_exploratory_data(vcf_file)
     bed_and_intersect_from_exploratory_file(vcf_file_path=vcf_file, window=50)
 
-# merge_tsv_files()
 join_with_intersect("validated")
 join_with_intersect("previous")
+
+merge_tsv_files()
