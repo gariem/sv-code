@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pandas as pd
 
-bcf_tools = "/home/egarcia/appdir/bcftools/bin/bcftools"
+bcf_tools = "bcftools"
 bed_tools = "bedtools"
 
 base_dir = '/home/egarcia/workspace/github/sv-code/pipeline'
@@ -40,7 +40,7 @@ def prepare_exploratory_data(vcf_file_path):
         awk -F'\\t' 'BEGIN {{OFS = FS}} $1 ~/^[1-9]*$|^X$/{{
             abs=$4<0?-$4:$4; af=(5-(int($7*100)%5)+int($7*100))/100; idx=$1":"$2"-"$3;
             len_bin=abs<30?"0-30":abs<50?"30-50":abs<100?"50-100":abs<500?"100-500":abs<2000?"500-2000":abs<10000?"2000-10000":abs<50000?"10000-50000":"50000+";
-            print "{caller}",idx,$1,$2,$3,$4,$5,$6,$7,$8,$9,abs,len_bin
+            print "{caller}",idx,$1,$2,$3,$4,$5,$6,$7,$8,$9,$10,abs,len_bin
         }}' >> {output}
     """
 
@@ -49,7 +49,7 @@ def prepare_exploratory_data(vcf_file_path):
     caller = info[3]
     print("Preparing stats file for [strain: " + strain + " - caller: " + caller + "]")
 
-    output_file = base_dir + "/work/explore/raw/" + strain + "_" + caller + ".tsv"
+    output_file = base_dir + "/work/explore/raw/" + strain + "_" + caller + "_calls.tsv"
     if caller == "pbsv":
         command = query_pbsv.format(bcf_bin=bcf_tools, vcf_file=vcf_file_path, output=output_file, caller=caller)
     else:
@@ -73,7 +73,7 @@ def bed_and_intersect_from_exploratory_file(vcf_file_path, window):
     strain = info[2]
     caller = info[3]
 
-    exploratory_expected_path = base_dir + "/work/explore/raw/" + strain + "_" + caller + ".tsv"
+    exploratory_expected_path = base_dir + "/work/explore/raw/" + strain + "_" + caller + "_calls.tsv"
     generated_bed = base_dir + "/work/explore/bed/" + strain + "_" + caller + ".bed"
 
     if caller == "pbsv":
@@ -86,12 +86,12 @@ def bed_and_intersect_from_exploratory_file(vcf_file_path, window):
     print(stream.read())
 
     # Intersect generated file with validated data
-    output_base_name = base_dir + '/work/explore/raw/' + strain + "_" + caller + "_intersect_validated"
+    output_base_name = base_dir + '/work/explore/raw/' + strain + "_" + caller + "_vs_validated"
     intersect_with(bed_in=generated_bed, files_with=input_validated, out_base_name=output_base_name, window=window,
                    caller=caller, outer=True)
 
     # Intersect generated file with previous catalog
-    output_base_name = base_dir + '/work/explore/raw/' + strain + "_" + caller + "_intersect_previous"
+    output_base_name = base_dir + '/work/explore/raw/' + strain + "_" + caller + "_vs_previous"
     intersect_with(bed_in=generated_bed, files_with=input_previous, out_base_name=output_base_name, window=window,
                    caller=caller, outer=False)
 
@@ -151,13 +151,13 @@ def intersect_beds(bed_a, bed_b, output, window=0, a_type='', b_type='', caller=
 
 # Join validated intersections with original new calls
 def join_with_intersect(set_identifier, how="inner"):
-    for tsv_file in glob.glob(base_dir + '/work/explore/raw/*_intersect_' + set_identifier + '.tsv'):
+    for tsv_file in glob.glob(base_dir + '/work/explore/raw/*_vs_' + set_identifier + '.tsv'):
         info = path_info(tsv_file)
         folder = info[0]
         strain = info[2]
         caller = info[3]
 
-        original_calls = folder + "/" + strain + "_" + caller + ".tsv"
+        original_calls = folder + "/" + strain + "_" + caller + "_calls.tsv"
         join_output = folder + "/" + strain + "_" + caller + "_join_" + set_identifier + ".tsv"
 
         print("Joining new reads with " + set_identifier + " intersect: " + tsv_file + " <--> " + original_calls)
@@ -170,9 +170,9 @@ def join_with_intersect(set_identifier, how="inner"):
 
 
 # Combine TSV files into a single XLSX file
-def merge_tsv_files():
-    print("Creating merged Excel file")
-    writer = pd.ExcelWriter(base_dir + '/work/explore/merged.xlsx')  # Arbitrary output name
+def merge_intersect_files():
+    print("Creating merged Excel file (intersects)")
+    writer = pd.ExcelWriter(base_dir + '/work/explore/intersects.xlsx', engine='xlsxwriter')
     for tsv_file in sorted(glob.glob(base_dir + '/work/explore/raw/*_join_*.tsv'), key=os.path.basename):
         sheet_name = "_".join(path_info(tsv_file)[3:])
         print("Processing sheet: " + sheet_name)
@@ -185,12 +185,39 @@ def merge_tsv_files():
         df.loc[df['TYPE_A'] != df['SVTYPE'], 'VALID'] = 'NOT_VALID'
 
         df.to_excel(writer, sheet_name=sheet_name, index=False)
+        format_ws(writer.sheets[sheet_name], df)
 
-    for tsv_out in sorted(glob.glob(base_dir + '/work/explore/raw/*_intersect_*_out.tsv'), key=os.path.basename):
+    for tsv_out in sorted(glob.glob(base_dir + '/work/explore/raw/*_vs_*_out.tsv'), key=os.path.basename):
         sheet_name = "_".join(path_info(tsv_out)[3:])
         print("Processing sheet: " + sheet_name)
         df = pd.read_csv(tsv_out, sep='\t', low_memory=False)
         df.to_excel(writer, sheet_name=sheet_name, index=False)
+        format_ws(writer.sheets[sheet_name], df)
+
+    writer.save()
+
+
+def format_ws(worksheet, df):
+    for idx, col in enumerate(df):
+        series = df[col]
+        max_len = max((
+            series.astype(str).map(len).max(),
+            len(str(series.name))
+        )) + 1
+        worksheet.set_column(idx, idx, max_len)
+
+
+# Combine TSV files into a single XLSX file
+def merge_call_files():
+    print("Creating merged Excel file (intersects)")
+    writer = pd.ExcelWriter(base_dir + '/work/explore/calls.xlsx', engine_kwargs={'options': {'strings_to_numbers': True}})
+
+    for tsv_file in sorted(glob.glob(base_dir + '/work/explore/raw/*_calls.tsv'), key=os.path.basename):
+        sheet_name = "_".join(path_info(tsv_file)[3:])
+        print("Processing sheet: " + sheet_name)
+        df = pd.read_csv(tsv_file, sep='\t', low_memory=False)
+        df.to_excel(writer, sheet_name=sheet_name, index=False)
+        format_ws(writer.sheets[sheet_name], df)
 
     writer.save()
 
@@ -213,4 +240,5 @@ for vcf_file in input_calls:
 join_with_intersect("validated")
 join_with_intersect("previous")
 
-merge_tsv_files()
+merge_intersect_files()
+merge_call_files()
