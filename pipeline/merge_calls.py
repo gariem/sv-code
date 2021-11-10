@@ -60,10 +60,11 @@ def prepare_support_data(vcf_file_path, include, target_type, window):
     print(stream.read())
 
 
-def prepare_filtered_bed(vcf_file_path, include, target_type, out_dir, suffix="_SRC", window=0):
+def prepare_filtered_bed(vcf_file_path, include, target_type, out_dir, prefix="", suffix="_SRC", window=0):
     bed_command = """
-        {bcf_bin} query -i '{include}' -f'%CHROM\\t%POS0\\t%END0\\t%SVLEN\n' {vcf_file} | 
-         awk -F'\\t' 'BEGIN {{OFS = FS}} $1 ~/^[1-9]*$|^X$/{{print $1,$2,$3-{window},$4+{window}}}' > {output}
+        echo '#CHROM\\tPOS\\tEND\\tSVLEN' > {output} && 
+        {bcf_bin} query -i '{include}' -f'%CHROM\\t%POS0\\t%END0\\t%SVLEN\\n' {vcf_file} | 
+        awk -F'\\t' 'BEGIN {{OFS = FS}} $1 ~/^[1-9]*$|^X$/{{print "{prefix}"$1,$2-{window},$3+{window},$4}}' >> {output}
     """
     info = path_info(vcf_file_path)
     strain = info[2].upper()
@@ -71,7 +72,7 @@ def prepare_filtered_bed(vcf_file_path, include, target_type, out_dir, suffix="_
 
     output_file_bed = base_dir + "/" + out_dir + strain + "_" + caller + "_" + target_type + suffix + ".bed"
     command = bed_command.format(bcf_bin=bcf_tools, include=include, vcf_file=vcf_file_path, window=window,
-                                 output=output_file_bed)
+                                 output=output_file_bed, prefix=prefix)
     print("Generating BED File => " + command)
     stream = os.popen(command)
     print(stream.read())
@@ -146,12 +147,12 @@ def merge_with_survivor():
 def generate_raw_analysis_data():
     survivor_calls = """
         echo "IDX\\tCHROM\\tPOS\\tEND\\tSVLEN\\tSVTYPE\\tSUPP\\tIDX_SRC1\\tIDX_SRC2" > {output_file} &&
-        {bcf_tools} query -f'%CHROM\\t%POS0\\t%END0\\t%SVLEN\\t%SVTYPE\\t%SUPP[\\t%CO]\n' {input_file} | 
+        {bcf_tools} query -f'%CHROM\\t%POS0\\t%END0\\t%SVLEN\\t%SVTYPE\\t%SUPP[\\t%CO]\\n' {input_file} | 
         awk  -F'\\t' 'BEGIN {{OFS = FS}} {{idx=$1":"$2"-"$3; print idx,$1,$2,$3,$4,$5,$6,$7,$8}}' >> {output_file} 
     """
 
     zero_file = base_dir + '/results/analysis/raw/all_calls.tsv'
-\
+
     command = survivor_calls.format(bcf_tools=bcf_tools, input_file=base_dir + '/results/vcf/survivor_merged_calls.vcf',
                                     output_file=zero_file)
 
@@ -166,6 +167,43 @@ def generate_raw_analysis_data():
         lambda x: x.replace("_", ":").replace("-" + x.split("_")[0] + ":", "-").split(",")[0])
 
     zero_df.to_csv(zero_file, sep='\t', index=False)
+
+
+def evaluate_results(options='-wo'):
+    intersect_in = """
+        {bed_tools_bin} intersect -a {bed_a} -b {bed_b} {options} | 
+        awk -F'\\t' 'BEGIN {{OFS = FS}} {{
+        idx_src=substr($1,4)":"$2+{window}"-"$3-{window};
+        idx=substr($5,4)":"$6+{window}"-"$7-{window};
+        print "{caller}",idx_src,$1,$2,$3,$4,toupper("{a_type}"),idx,substr($5,4),$6+{window},$7-{window},$8,"{b_type}",$9}}' >> {output}
+    """
+
+    intersect_out = """
+        {bed_tools_bin} intersect -a {bed_a} -b {bed_b} {options} | 
+        awk -F'\\t' 'BEGIN {{OFS = FS}} {{
+        idx_src=substr($1,4)":"$2+{window}"-"$3-{window};
+        idx=substr($5,4)":"$6+{window}"-"$7-{window};
+        print "{caller}",idx_src,$1,$2,$3,$4,toupper("{a_type}")}}' >> {output}
+    """
+
+    for bed_file in glob.glob(base_dir + '/results/analysis/bed/*.bed'):
+        b_info = path_info(bed_file)
+        b_caller = b_info[2].upper()
+        b_type = b_info[4].upper()
+
+        for validated_file in glob.glob(base_dir + '/input/validated/*.bed'):
+            v_info = path_info(validated_file)
+            v_type = v_info[3].upper()
+            v_subtype = v_info[4].upper()
+
+            if b_type == v_type:
+                output = base_dir + '/results/analysis/raw/' + b_type + '_vs_' + v_type + '_' + v_subtype + '.tsv'
+                command = intersect_in.format(bed_tools_bin=bed_tools, bed_a=validated_file, bed_b=bed_file,
+                                              window=window, output=output, a_type=v_subtype, b_type=b_type,
+                                              caller=b_caller, options=options)
+                print("Intersecting => " + command)
+                stream = os.popen(command)
+                print(stream.read())
 
 
 # Initialize directories
@@ -197,12 +235,14 @@ expected_final_vcf = base_dir + "/results/vcf/survivor_merged_calls.vcf"
 window = 20
 
 prepare_filtered_bed(expected_final_vcf, 'SVTYPE="DEL"', "DEL", 'results/bed/')
-prepare_filtered_bed(expected_final_vcf, 'SVTYPE="DEL"', "DEL", 'results/analysis/bed/', "_" + str(window), window)
+prepare_filtered_bed(expected_final_vcf, 'SVTYPE="DEL"', "DEL", 'results/analysis/bed/', "chr", "_" + str(window), window)
 prepare_filtered_bed(expected_final_vcf, 'SVTYPE="INS"', "INS", 'results/bed/')
-prepare_filtered_bed(expected_final_vcf, 'SVTYPE="INS"', "INS", 'results/analysis/bed/', "_" + str(window), window)
+prepare_filtered_bed(expected_final_vcf, 'SVTYPE="INS"', "INS", 'results/analysis/bed/', "chr", "_" + str(window), window)
 prepare_filtered_bed(expected_final_vcf, 'SVTYPE="INV"', "INV", 'results/bed/')
-prepare_filtered_bed(expected_final_vcf, 'SVTYPE="INV"', "INV", 'results/analysis/bed/', "_" + str(window), window)
+prepare_filtered_bed(expected_final_vcf, 'SVTYPE="INV"', "INV", 'results/analysis/bed/', "chr", "_" + str(window), window)
 prepare_filtered_bed(expected_final_vcf, 'SVTYPE="DUP"', "DUP", 'results/bed/')
-prepare_filtered_bed(expected_final_vcf, 'SVTYPE="DUP"', "DUP", 'results/analysis/bed/', "_" + str(window), window)
+prepare_filtered_bed(expected_final_vcf, 'SVTYPE="DUP"', "DUP", 'results/analysis/bed/', "chr", "_" + str(window), window)
 
 generate_raw_analysis_data()
+
+evaluate_results()
