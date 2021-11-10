@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pandas as pd
 
-bcf_tools = "/home/egarcia/appdir/bcftools/bin/bcftools"
+bcf_tools = "bcftools"
 bed_tools = "bedtools"
 
 base_dir = '/home/egarcia/workspace/github/sv-code/pipeline'
@@ -27,7 +27,7 @@ def prepare_exploratory_data(vcf_file_path):
     query_sniffles = """ 
         echo '#CALLER\\tIDX\\tCHROM\\tPOS\\tEND\\tSVLEN\\tSVTYPE\\tFILTER\\tRE\\tAF\\tGT\\tDR\\tDV\\tSVLEN_ABS\\tAF_BIN\\tSVLEN_BIN' > {output} && 
         {bcf_bin} query -Hf'%CHROM\\t%POS0\\t%END0\\t[%SVLEN]\\t[%SVTYPE]\\t%FILTER\\t[%RE]\\t[%AF]\\t[%GT]\\t[%DR]\\t[%DV]\\n' {vcf_file} | 
-        awk -F'\\t' 'BEGIN {{OFS = FS}} $1 ~/^[1-9]*$|^X$/{{ 
+        awk -F'\\t' 'BEGIN {{OFS = FS}} $1 ~/^[0-9]*$|^X$/{{ 
             abs=$4<0?-$4:$4; af=(5-(int($7*100)%5)+int($7*100))/100; idx=$1":"$2"-"$3; 
             len_bin=abs<30?"0-30":abs<50?"30-50":abs<100?"50-100":abs<500?"100-500":abs<2000?"500-2000":abs<10000?"2000-10000":abs<50000?"10000-50000":"50000+";  
             print "{caller}",idx,$1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,abs,af,len_bin
@@ -37,7 +37,7 @@ def prepare_exploratory_data(vcf_file_path):
     query_pbsv = """
         echo '#CALLER\\tIDX\\tCHROM\\tPOS\\tEND\\tSVLEN\\tSVTYPE\\tFILTER\\tGT\\tAD_0\\tAD_1\\tDP\\tSVLEN_ABS\\tSVLEN_BIN' > {output} && 
         {bcf_bin} query -Hf'%CHROM\\t%POS0\\t%END0\\t[%SVLEN]\\t[%SVTYPE]\\t%FILTER\\t[%GT]\\t[%AD{{0}}]\\t[%AD{{1}}]\\t[%DP]\\n' {vcf_file} | 
-        awk -F'\\t' 'BEGIN {{OFS = FS}} $1 ~/^[1-9]*$|^X$/{{
+        awk -F'\\t' 'BEGIN {{OFS = FS}} $1 ~/^[0-9]*$|^X$/{{
             abs=$4<0?-$4:$4; af=(5-(int($7*100)%5)+int($7*100))/100; idx=$1":"$2"-"$3;
             len_bin=abs<30?"0-30":abs<50?"30-50":abs<100?"50-100":abs<500?"100-500":abs<2000?"500-2000":abs<10000?"2000-10000":abs<50000?"10000-50000":"50000+";
             print "{caller}",idx,$1,$2,$3,$4,$5,$6,$7,$8,$9,$10,abs,len_bin
@@ -210,7 +210,8 @@ def format_ws(worksheet, df):
 # Combine TSV files into a single XLSX file
 def merge_call_files():
     print("Creating merged Excel file (intersects)")
-    writer = pd.ExcelWriter(base_dir + '/work/explore/calls.xlsx', engine_kwargs={'options': {'strings_to_numbers': True}})
+    writer = pd.ExcelWriter(base_dir + '/work/explore/calls.xlsx',
+                            engine_kwargs={'options': {'strings_to_numbers': True}})
 
     for tsv_file in sorted(glob.glob(base_dir + '/work/explore/raw/*_calls.tsv'), key=os.path.basename):
         sheet_name = "_".join(path_info(tsv_file)[3:])

@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pandas as pd
 
-bcf_tools = "/home/egarcia/appdir/bcftools/bin/bcftools"
+bcf_tools = "bcftools"
 bed_tools = "bedtools"
 survivor = "/home/egarcia/workspace/github/SURVIVOR/Debug/SURVIVOR"
 
@@ -25,7 +25,7 @@ def prepare_support_data(vcf_file_path, include, target_type, window):
     support_command_sniffles = """
         echo '#CALLER\\tIDX\\tCHROM\\tPOS\\tEND\\tSVLEN\\tSVTYPE\\tFILTER\\tRE\\tAF\\tGT\\tDR\\tDV\\tSVLEN_ABS\\tAF_BIN\\tSVLEN_BIN' > {output} && 
         {bcf_bin} query -i '{include}' -Hf'%CHROM\\t%POS0\\t%END0\\t[%SVLEN]\\t[%SVTYPE]\\t%FILTER\\t[%RE]\\t[%AF]\\t[%GT]\\t[%DR]\\t[%DV]\\n' {vcf_file} | 
-        awk -F'\\t' 'BEGIN {{OFS = FS}} $1 ~/^[1-9]*$|^X$/{{ 
+        awk -F'\\t' 'BEGIN {{OFS = FS}} $1 ~/^[0-9]*$|^X$/{{ 
             abs=$4<0?-$4:$4; af=(5-(int($7*100)%5)+int($7*100))/100; idx=$1":"$2"-"$3; 
             len_bin=abs<30?"0-30":abs<50?"30-50":abs<100?"50-100":abs<500?"100-500":abs<2000?"500-2000":abs<10000?"2000-10000":abs<50000?"10000-50000":"50000+";  
             print "{caller}",idx,$1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,abs,af,len_bin
@@ -35,7 +35,7 @@ def prepare_support_data(vcf_file_path, include, target_type, window):
     support_command_pbsv = """
         echo '#CALLER\\tIDX\\tCHROM\\tPOS\\tEND\\tSVLEN\\tSVTYPE\\tFILTER\\tGT\\tAD_0\\tAD_1\\tDP\\tSVLEN_ABS\\tSVLEN_BIN' > {output} && 
         {bcf_bin} query -i '{include}' -Hf'%CHROM\\t%POS0\\t%END0\\t[%SVLEN]\\t[%SVTYPE]\\t%FILTER\\t[%GT]\\t[%AD{{0}}]\\t[%AD{{1}}]\\t[%DP]\\n' {vcf_file} | 
-        awk -F'\\t' 'BEGIN {{OFS = FS}} $1 ~/^[1-9]*$|^X$/{{
+        awk -F'\\t' 'BEGIN {{OFS = FS}} $1 ~/^[0-9]*$|^X$/{{
             abs=$4<0?-$4:$4; af=(5-(int($7*100)%5)+int($7*100))/100; idx=$1":"$2"-"$3;
             len_bin=abs<30?"0-30":abs<50?"30-50":abs<100?"50-100":abs<500?"100-500":abs<2000?"500-2000":abs<10000?"2000-10000":abs<50000?"10000-50000":"50000+";
             print "{caller}",idx,$1,$2,$3,$4,$5,$6,$7,$8,$9,$10,abs,len_bin
@@ -64,7 +64,7 @@ def prepare_filtered_bed(vcf_file_path, include, target_type, out_dir, prefix=""
     bed_command = """
         echo '#CHROM\\tPOS\\tEND\\tSVLEN' > {output} && 
         {bcf_bin} query -i '{include}' -f'%CHROM\\t%POS0\\t%END0\\t%SVLEN\\n' {vcf_file} | 
-        awk -F'\\t' 'BEGIN {{OFS = FS}} $1 ~/^[1-9]*$|^X$/{{print "{prefix}"$1,$2-{window},$3+{window},$4}}' >> {output}
+        awk -F'\\t' 'BEGIN {{OFS = FS}} $1 ~/^[0-9]*$|^X$/{{print "{prefix}"$1,$2-{window},$3+{window},$4}}' >> {output}
     """
     info = path_info(vcf_file_path)
     strain = info[2].upper()
