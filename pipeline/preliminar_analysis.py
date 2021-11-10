@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pandas as pd
 
-bcf_tools = "bcftools"
+bcf_tools = "/home/egarcia/appdir/bcftools/bin/bcftools"
 bed_tools = "bedtools"
 
 base_dir = '/home/egarcia/workspace/github/sv-code/pipeline'
@@ -226,7 +226,7 @@ def merge_call_files():
 def initialize(dir_path):
     paths = ['/input/calls', '/input/validated', '/input/previous',
              '/work/explore/raw', '/work/explore/bed',
-             '/work/vcf', '/work/bed', '/results']
+             '/results']
     for path_str in paths:
         Path(dir_path + path_str).mkdir(parents=True, exist_ok=True)
 
