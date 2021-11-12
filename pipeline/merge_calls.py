@@ -175,7 +175,7 @@ def evaluate_results(options='-wo'):
         awk -F'\\t' 'BEGIN {{OFS = FS}} {{
         idx_src=substr($1,4)":"$2+{window}"-"$3-{window};
         idx=substr($5,4)":"$6+{window}"-"$7-{window};
-        print "{caller}",idx_src,$1,$2,$3,$4,toupper("{a_type}"),idx,substr($5,4),$6+{window},$7-{window},$8,"{b_type}",$9}}' >> {output}
+        print "{caller}",idx_src,$1,$2,$3,$4,toupper("{a_type}"),idx,substr($5,4),$6+{window},$7-{window},$8,"{b_type}",$9}}' > {output}
     """
 
     intersect_out = """
@@ -183,7 +183,7 @@ def evaluate_results(options='-wo'):
         awk -F'\\t' 'BEGIN {{OFS = FS}} {{
         idx_src=substr($1,4)":"$2+{window}"-"$3-{window};
         idx=substr($5,4)":"$6+{window}"-"$7-{window};
-        print "{caller}",idx_src,$1,$2,$3,$4,toupper("{a_type}")}}' >> {output}
+        print "{caller}",idx_src,$1,$2,$3,$4,toupper("{a_type}")}}' > {output}
     """
 
     for bed_file in glob.glob(base_dir + '/results/analysis/bed/*.bed'):
@@ -232,16 +232,20 @@ merge_with_survivor()
 
 expected_final_vcf = base_dir + "/results/vcf/survivor_merged_calls.vcf"
 
-window = 20
+window = 50
 
 prepare_filtered_bed(expected_final_vcf, 'SVTYPE="DEL"', "DEL", 'results/bed/')
-prepare_filtered_bed(expected_final_vcf, 'SVTYPE="DEL"', "DEL", 'results/analysis/bed/', "chr", "_" + str(window), window)
+prepare_filtered_bed(expected_final_vcf, 'SVTYPE="DEL"', "DEL", 'results/analysis/bed/', "chr", "_" + str(window),
+                     window)
 prepare_filtered_bed(expected_final_vcf, 'SVTYPE="INS"', "INS", 'results/bed/')
-prepare_filtered_bed(expected_final_vcf, 'SVTYPE="INS"', "INS", 'results/analysis/bed/', "chr", "_" + str(window), window)
+prepare_filtered_bed(expected_final_vcf, 'SVTYPE="INS"', "INS", 'results/analysis/bed/', "chr", "_" + str(window),
+                     window)
 prepare_filtered_bed(expected_final_vcf, 'SVTYPE="INV"', "INV", 'results/bed/')
-prepare_filtered_bed(expected_final_vcf, 'SVTYPE="INV"', "INV", 'results/analysis/bed/', "chr", "_" + str(window), window)
+prepare_filtered_bed(expected_final_vcf, 'SVTYPE="INV"', "INV", 'results/analysis/bed/', "chr", "_" + str(window),
+                     window)
 prepare_filtered_bed(expected_final_vcf, 'SVTYPE="DUP"', "DUP", 'results/bed/')
-prepare_filtered_bed(expected_final_vcf, 'SVTYPE="DUP"', "DUP", 'results/analysis/bed/', "chr", "_" + str(window), window)
+prepare_filtered_bed(expected_final_vcf, 'SVTYPE="DUP"', "DUP", 'results/analysis/bed/', "chr", "_" + str(window),
+                     window)
 
 generate_raw_analysis_data()
 
