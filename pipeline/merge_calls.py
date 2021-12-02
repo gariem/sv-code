@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pandas as pd
 
-bcf_tools = "bcftools"
+bcf_tools = "/home/egarcia/appdir/bcftools/bin/bcftools"
 bed_tools = "bedtools"
 survivor = "/home/egarcia/workspace/github/SURVIVOR/Debug/SURVIVOR"
 
@@ -133,7 +133,7 @@ def merge_with_survivor():
     print(stream.read())
 
     survivor_merge = """
-        {survivor_bin} merge {file_list} 150 1 1 1 0 15 {output_vcf}
+        {survivor_bin} merge {file_list} 100 1 1 1 0 15 {output_vcf}
     """
 
     command = survivor_merge.format(survivor_bin=survivor, file_list=base_dir + "/work/merge/vcf/survivor_input.txt",
@@ -171,11 +171,12 @@ def generate_raw_analysis_data():
 
 def evaluate_results(options='-wo'):
     intersect_in = """
+        echo "#CALLER\\tIDX_SRC\\tCHROM_SRC\\tPOS_SRC\\tEND_SRC\\tSVLEN_SRC\\tSVTYPE_SRC\\tIDX\\tCHROM\\tPOS\\tEND\\tSVLEN\\tSVTYPE\\tOVERLAP" > {output} && 
         {bed_tools_bin} intersect -a {bed_a} -b {bed_b} {options} | 
         awk -F'\\t' 'BEGIN {{OFS = FS}} {{
         idx_src=substr($1,4)":"$2+{window}"-"$3-{window};
         idx=substr($5,4)":"$6+{window}"-"$7-{window};
-        print "{caller}",idx_src,$1,$2,$3,$4,toupper("{a_type}"),idx,substr($5,4),$6+{window},$7-{window},$8,"{b_type}",$9}}' > {output}
+        print "{caller}",idx_src,$1,$2,$3,$4,toupper("{a_type}"),idx,substr($5,4),$6+{window},$7-{window},$8,"{b_type}",$9}}' >> {output}
     """
 
     intersect_out = """
@@ -186,7 +187,7 @@ def evaluate_results(options='-wo'):
         print "{caller}",idx_src,$1,$2,$3,$4,toupper("{a_type}")}}' > {output}
     """
 
-    for bed_file in glob.glob(base_dir + '/results/analysis/bed/*.bed'):
+    for bed_file in glob.glob(base_dir + '/results/analysis/bed/*_' + str(window) + '.bed'):
         b_info = path_info(bed_file)
         b_caller = b_info[2].upper()
         b_type = b_info[4].upper()
@@ -232,7 +233,7 @@ merge_with_survivor()
 
 expected_final_vcf = base_dir + "/results/vcf/survivor_merged_calls.vcf"
 
-window = 50
+window = 20
 
 prepare_filtered_bed(expected_final_vcf, 'SVTYPE="DEL"', "DEL", 'results/bed/')
 prepare_filtered_bed(expected_final_vcf, 'SVTYPE="DEL"', "DEL", 'results/analysis/bed/', "chr", "_" + str(window),
