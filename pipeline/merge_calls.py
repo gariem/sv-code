@@ -235,18 +235,14 @@ expected_final_vcf = base_dir + "/results/vcf/survivor_merged_calls.vcf"
 
 window = 20
 
-prepare_filtered_bed(expected_final_vcf, 'SVTYPE="DEL"', "DEL", 'results/bed/')
-prepare_filtered_bed(expected_final_vcf, 'SVTYPE="DEL"', "DEL", 'results/analysis/bed/', "chr", "_" + str(window),
-                     window)
-prepare_filtered_bed(expected_final_vcf, 'SVTYPE="INS"', "INS", 'results/bed/')
-prepare_filtered_bed(expected_final_vcf, 'SVTYPE="INS"', "INS", 'results/analysis/bed/', "chr", "_" + str(window),
-                     window)
-prepare_filtered_bed(expected_final_vcf, 'SVTYPE="INV"', "INV", 'results/bed/')
-prepare_filtered_bed(expected_final_vcf, 'SVTYPE="INV"', "INV", 'results/analysis/bed/', "chr", "_" + str(window),
-                     window)
+# prepare_filtered_bed(expected_final_vcf, 'SVTYPE="DEL"', "DEL", 'results/bed/')
+# prepare_filtered_bed(expected_final_vcf, 'SVTYPE="DEL"', "DEL", 'results/analysis/bed/', "chr", "_" + str(window),window)
+# prepare_filtered_bed(expected_final_vcf, 'SVTYPE="INS"', "INS", 'results/bed/')
+# prepare_filtered_bed(expected_final_vcf, 'SVTYPE="INS"', "INS", 'results/analysis/bed/', "chr", "_" + str(window),window)
+# prepare_filtered_bed(expected_final_vcf, 'SVTYPE="INV"', "INV", 'results/bed/')
+# prepare_filtered_bed(expected_final_vcf, 'SVTYPE="INV"', "INV", 'results/analysis/bed/', "chr", "_" + str(window),window)
 prepare_filtered_bed(expected_final_vcf, 'SVTYPE="DUP"', "DUP", 'results/bed/')
-prepare_filtered_bed(expected_final_vcf, 'SVTYPE="DUP"', "DUP", 'results/analysis/bed/', "chr", "_" + str(window),
-                     window)
+prepare_filtered_bed(expected_final_vcf, 'SVTYPE="DUP"', "DUP", 'results/analysis/bed/', "chr", "_" + str(window),window)
 
 generate_raw_analysis_data()
 
